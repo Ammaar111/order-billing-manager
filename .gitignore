@@ -1,0 +1,10 @@
+node_modules/
+dist/
+backend/orders.db
+backend/orders.db-wal
+backend/orders.db-shm
+backend/backups/
+backend/uploads/*
+!backend/uploads/.gitkeep
+.env
+*.tmp.*
