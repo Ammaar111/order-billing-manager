@@ -122,9 +122,10 @@ function billHtml(order, items, settings) {
     <tbody>
       ${rows}
       ${line('Total qty', money(order.total_qty))}
-      ${line('Items', cur + n2(order.items_total))}
+      ${line('Bill total', cur + n2(order.items_total))}
       ${money(order.total_discount) > 0 ? line('Discount given', '- ' + cur + n2(order.total_discount)) : ''}
       ${line('Packing', cur + n2(order.packing))}
+      ${money(order.round_off) !== 0 ? line('Round off', (money(order.round_off) > 0 ? '+ ' : '- ') + cur + n2(Math.abs(order.round_off))) : ''}
       ${line('Grand total', cur + n2(order.grand_total), true)}
       ${line('Amount received', cur + n2(order.amount_paid))}
       ${line(order.pending < 0 ? 'Change due' : 'Pending', cur + n2(Math.abs(order.pending)), true)}
@@ -179,6 +180,9 @@ export function billText(order, items, settings) {
     `Total qty: ${money(order.total_qty)}`,
     money(order.total_discount) > 0 ? `Discount given: -${cur}${money(order.total_discount)}` : '',
     `Packing: ${cur}${money(order.packing)}`,
+    money(order.round_off) !== 0
+      ? `Round off: ${money(order.round_off) > 0 ? '+' : '-'}${cur}${money(Math.abs(order.round_off))}`
+      : '',
     `Grand total: ${cur}${money(order.grand_total)}`,
     `Received: ${cur}${money(order.amount_paid)}`,
     order.pending < 0

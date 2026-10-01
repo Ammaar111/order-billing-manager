@@ -1,5 +1,5 @@
 import React from 'react';
-import { money, prettyDate } from '../utils.js';
+import { money, prettyDate, prettyTime } from '../utils.js';
 
 const n2 = (v) => money(v).toFixed(2);
 
@@ -16,6 +16,12 @@ const nRoll = (v) => {
 // Narrower paper falls back to a name on its own line.
 const TABLE_MIN_MM = 70;
 
+// Nothing is printed within this distance of either edge of the roll. A
+// thermal head cannot reach the outer few millimetres of its paper, so on an
+// 80mm roll the bill lives in the middle 70mm and the printer never has to
+// clip anything.
+const ROLL_SIDE_MM = 5;
+
 /**
  * The bill as it goes on paper. One component covers both A4 and the thermal
  * roll — same figures, different stylesheet — so a receipt can never disagree
@@ -31,9 +37,14 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
   // Only a narrow roll gives up the table; 80mm keeps all six columns.
   const stacked = thermal && withNames && rollMm < TABLE_MIN_MM;
   const fig = thermal ? nRoll : n2;
+  // Columns in front of Qty; the Total qty label spans them.
+  const beforeQty = withNames ? 2 : 1;
 
   return (
-    <div className={`bill-paper ${thermal ? 'bill-thermal' : 'bill-a4'}`}>
+    <div
+      className={`bill-paper ${thermal ? 'bill-thermal' : 'bill-a4'}`}
+      style={thermal ? { width: `${rollMm - 2 * ROLL_SIDE_MM}mm` } : undefined}
+    >
       <header className="bp-head">
         <h1>{settings.shop_name || 'Order Bill Manager'}</h1>
         {settings.shop_address ? <p>{settings.shop_address}</p> : null}
@@ -43,7 +54,11 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
       <div className="bp-meta">
         <div>
           <strong>Order #{order.order_no}</strong>
-          <span>{prettyDate(order.order_date)}</span>
+          <span>
+            {prettyDate(order.order_date)}
+            {' · '}
+            {prettyTime()}
+          </span>
         </div>
         <div className="bp-customer">
           <span>Name: {order.customer_name}</span>
@@ -73,7 +88,7 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
           ))}
         </div>
       ) : (
-        <table className="bp-table">
+        <table className={`bp-table${withNames ? '' : ' bp-no-names'}`}>
           <thead>
             <tr>
               <th className="c-sr">Sr</th>
@@ -81,7 +96,7 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
               <th className="c-num c-qty">Qty</th>
               <th className="c-num c-rate">Rate</th>
               {hasDiscount && <th className="c-num c-disc">{thermal ? '%' : 'Disc%'}</th>}
-              <th className="c-num c-cost">Cost</th>
+              <th className="c-num c-cost">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -102,17 +117,31 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
                 <td className="c-num c-cost">{fig(it.line_total)}</td>
               </tr>
             ))}
+            {/* The last row of the body, not a <tfoot>: a printer repeats a
+                tfoot at the bottom of every page, so a long A4 bill would show
+                the total on page one as well. */}
+            <tr className="bp-qty-total">
+              <td className="c-qty-label" colSpan={beforeQty}>
+                {withNames ? 'Total qty' : 'Total'}
+              </td>
+              <td className="c-num c-qty">{money(order.total_qty)}</td>
+              <td colSpan={hasDiscount ? 3 : 2} />
+            </tr>
           </tbody>
         </table>
       )}
 
       <div className="bp-totals">
+        {/* With the table, the total quantity already sits under the Qty
+            column. The stacked layout has no such column, so it stays here. */}
+        {stacked && (
+          <div>
+            <span>Total qty</span>
+            <span>{money(order.total_qty)}</span>
+          </div>
+        )}
         <div>
-          <span>Total qty</span>
-          <span>{money(order.total_qty)}</span>
-        </div>
-        <div>
-          <span>Items</span>
+          <span>Bill total</span>
           <span>
             {cur}
             {fig(order.items_total)}
@@ -134,6 +163,16 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
             {fig(order.packing)}
           </span>
         </div>
+        {money(order.round_off) !== 0 && (
+          <div>
+            <span>Round off</span>
+            <span>
+              {money(order.round_off) > 0 ? '+ ' : '− '}
+              {cur}
+              {fig(Math.abs(money(order.round_off)))}
+            </span>
+          </div>
+        )}
         <div className="bp-grand">
           <span>Grand total</span>
           <span>

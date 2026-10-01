@@ -136,13 +136,37 @@ popd
 exit /b %RC%
 
 :build
-if exist "frontend\dist\index.html" exit /b 0
+REM Builds when there is no build yet, and also when any file under
+REM frontend\src (or frontend\index.html) is newer than the last build - so
+REM copying in changed source files is enough, nobody has to run
+REM "npm run build" by hand.
+REM This runs in cmd, where npm is npm.cmd. PowerShell's "running scripts is
+REM disabled on this system" block only applies to npm.ps1, so it never
+REM stops this script - that error only appears when npm is typed into a
+REM PowerShell window.
+if not exist "frontend\dist\index.html" goto dobuild
+node -e "const fs=require('fs'),p=require('path');let m=0;const w=d=>{for(const e of fs.readdirSync(d,{withFileTypes:true})){const f=p.join(d,e.name);e.isDirectory()?w(f):m=Math.max(m,fs.statSync(f).mtimeMs)}};w('frontend/src');m=Math.max(m,fs.statSync('frontend/index.html').mtimeMs);process.exit(m>fs.statSync('frontend/dist/index.html').mtimeMs?1:0)"
+if not errorlevel 1 exit /b 0
+echo The front end has changed since it was last built.
+:dobuild
 echo Building the front end...
 pushd frontend
 call npm run build
 set RC=%ERRORLEVEL%
 popd
-exit /b %RC%
+if "%RC%"=="0" exit /b 0
+REM A failed rebuild with an older build still in place: keep the shop billing
+REM on the older version rather than refusing to start, but say so plainly.
+if not exist "frontend\dist\index.html" exit /b %RC%
+echo.
+echo   ------------------------------------------------------------------
+echo    The new build FAILED - the message above says why. Starting the
+echo    PREVIOUS version instead, so billing still works, but your latest
+echo    changes are NOT in it.
+echo   ------------------------------------------------------------------
+echo.
+pause
+exit /b 0
 
 :openwhenready
 REM Windows 10 builds before 1803 have no curl.exe. Without it the port cannot be

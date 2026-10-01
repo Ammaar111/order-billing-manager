@@ -197,7 +197,7 @@ app.get('/api/orders/:id', (req, res) => {
 // One place computes a bill's figures. The browser sends what was typed; every
 // total on the saved order is worked out here, so an edited page cannot make
 // a bill add up to something it does not.
-function totalsFor(rawItems, packing) {
+function totalsFor(rawItems, packing, roundOff) {
   const items = [];
   let itemsTotal = 0;
   let totalQty = 0;
@@ -232,13 +232,15 @@ function totalsFor(rawItems, packing) {
   });
 
   const pack = money(packing);
-  const grand = money(itemsTotal + pack);
+  const roundOffAmt = money(roundOff);
+  const grand = money(itemsTotal + pack + roundOffAmt);
   return {
     items,
     itemsTotal: money(itemsTotal),
     totalQty: money(totalQty),
     discountTotal: money(discountTotal),
     packing: pack,
+    roundOff: roundOffAmt,
     grand,
   };
 }
@@ -249,7 +251,7 @@ function writeOrder(body, existing) {
   // it under and the customer list does not fill up with empty rows.
   const name = str(body.customer_name) || 'Cash';
 
-  const t = totalsFor(Array.isArray(body.items) ? body.items : [], body.packing);
+  const t = totalsFor(Array.isArray(body.items) ? body.items : [], body.packing, body.round_off);
   const paid = money(body.amount_paid);
   const pending = money(t.grand - paid);
   const now = nowStr();
@@ -260,8 +262,8 @@ function writeOrder(body, existing) {
       db.prepare(
         `UPDATE orders SET customer_name = ?, customer_phone = ?, address = ?,
                 packing = ?, amount_paid = ?, items_total = ?, grand_total = ?,
-                pending = ?, total_qty = ?, total_discount = ?, bill_type = ?,
-                note = ?, updated_at = ?
+                pending = ?, total_qty = ?, total_discount = ?, round_off = ?,
+                bill_type = ?, note = ?, updated_at = ?
           WHERE id = ?`
       ).run(
         name,
@@ -274,6 +276,7 @@ function writeOrder(body, existing) {
         pending,
         t.totalQty,
         t.discountTotal,
+        t.roundOff,
         str(body.bill_type) || 'full',
         str(body.note),
         now,
@@ -288,8 +291,8 @@ function writeOrder(body, existing) {
         .prepare(
           `INSERT INTO orders (order_no, customer_name, customer_phone, address, packing,
                                amount_paid, items_total, grand_total, pending, total_qty,
-                               total_discount, bill_type, note, order_date, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                               total_discount, round_off, bill_type, note, order_date, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           nextOrderNo(),
@@ -303,6 +306,7 @@ function writeOrder(body, existing) {
           pending,
           t.totalQty,
           t.discountTotal,
+          t.roundOff,
           str(body.bill_type) || 'full',
           str(body.note),
           str(body.order_date) || todayStr(),

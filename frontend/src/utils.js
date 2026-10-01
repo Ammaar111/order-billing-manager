@@ -40,6 +40,11 @@ export const prettyDate = (iso) => {
   });
 };
 
+// The moment a bill is printed, not the order's own timestamp — a reprint
+// months later should show today's time, not when it was first raised.
+export const prettyTime = (d = new Date()) =>
+  d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+
 export const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',

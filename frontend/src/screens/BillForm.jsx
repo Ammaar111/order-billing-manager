@@ -55,6 +55,12 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   const [justSaved, setJustSaved] = useState(true);
   const [askPrint, setAskPrint] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
+  const [roundOff, setRoundOff] = useState(0);
+  // Whether the biller has typed into Amount received themselves — including
+  // typing 0 for a credit sale. Until then it tracks the grand total live, so
+  // a normal full-payment sale needs no typing at all; the moment it is
+  // touched, by any value, it stops following and keeps exactly what was typed.
+  const [paidTouched, setPaidTouched] = useState(false);
 
   const formRef = useRef(null);
   const packingRef = useRef(null);
@@ -79,6 +85,8 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
         });
         setPacking(o.packing ? String(o.packing) : '');
         setPaid(o.amount_paid ? String(o.amount_paid) : '');
+        setPaidTouched(true); // a saved order keeps what it was actually paid, never re-defaulted
+        setRoundOff(o.round_off || 0);
         setNote(o.note || '');
         setOrderDate(o.order_date);
         setCompletedAt(o.completed_at || '');
@@ -128,16 +136,48 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       }
       return line;
     });
-    const grand = money(items + num(packing));
+    const grandRaw = money(items + num(packing));
     return {
       lines,
       items: money(items),
       qty: money(qty),
       discount: money(discount),
-      grand,
-      pending: money(grand - num(paid)),
+      grandRaw,
     };
-  }, [rows, packing, paid]);
+  }, [rows, packing]);
+
+  // The round-off only counts while it still rounds the CURRENT raw total to a
+  // whole rupee. An edit that changes items or packing after a round-off was
+  // chosen would otherwise carry a stale adjustment forward — either doing
+  // nothing or pushing the new total further off a whole number — so instead
+  // it is silently treated as not-yet-decided and the ask reappears for the
+  // new figure. This also covers reopening a bill that was rounded off before:
+  // its saved round_off still rounds its (unchanged) total, so it is trusted.
+  const roundedGrand = money(totals.grandRaw + roundOff);
+  const roundOffValid = roundOff === 0 || Number.isInteger(roundedGrand);
+  const effectiveRoundOff = roundOffValid ? roundOff : 0;
+  const grand = money(totals.grandRaw + effectiveRoundOff);
+  const pending = money(grand - num(paid));
+  const roundTarget = Math.round(totals.grandRaw);
+  const needsRoundAsk =
+    effectiveRoundOff === 0 && totals.grandRaw > 0 && !Number.isInteger(totals.grandRaw);
+
+  // Amount received defaults to the bill total, so a plain full-payment sale
+  // needs no typing — but the instant the biller types anything into that
+  // field themselves, including 0 for a credit sale, it stops following and
+  // keeps exactly what they typed from then on.
+  useEffect(() => {
+    if (!orderId && !paidTouched) setPaid(grand ? String(grand) : '');
+  }, [grand, orderId, paidTouched]);
+
+  const applyRoundOff = () => {
+    setRoundOff(money(roundTarget - totals.grandRaw));
+    markDirty();
+  };
+  const clearRoundOff = () => {
+    setRoundOff(0);
+    markDirty();
+  };
 
   /* --------------------------------------------------------- row editing */
 
@@ -318,6 +358,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       address: customer.address,
       packing: num(packing),
       amount_paid: num(paid),
+      round_off: effectiveRoundOff,
       bill_type: billType,
       note,
       order_date: orderDate,
@@ -627,6 +668,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             <input
               {...numProps(paid, (v) => {
                 setPaid(v);
+                setPaidTouched(true);
                 markDirty();
               }, 'amount-received')}
               placeholder="0"
@@ -638,7 +680,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
               <strong>{totals.qty}</strong>
             </div>
             <div>
-              <span>Items</span>
+              <span>Bill total</span>
               <strong>{rupees(totals.items, cur)}</strong>
             </div>
             {totals.discount > 0 && (
@@ -647,9 +689,31 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
                 <strong>− {rupees(totals.discount, cur)}</strong>
               </div>
             )}
+            {needsRoundAsk && (
+              <div className="round-ask">
+                <span>
+                  Round {rupees(totals.grandRaw, cur)} to {rupees(roundTarget, cur)}?
+                </span>
+                <button type="button" className="chip" onClick={applyRoundOff}>
+                  Round off
+                </button>
+              </div>
+            )}
+            {effectiveRoundOff !== 0 && (
+              <div className="saved round-off-note">
+                <span>Round off</span>
+                <strong>
+                  {effectiveRoundOff > 0 ? '+ ' : '− '}
+                  {rupees(Math.abs(effectiveRoundOff), cur)}
+                  <button type="button" className="undo" onClick={clearRoundOff}>
+                    undo
+                  </button>
+                </strong>
+              </div>
+            )}
             <div className="grand">
               <span>Grand total</span>
-              <strong>{rupees(totals.grand, cur)}</strong>
+              <strong>{rupees(grand, cur)}</strong>
             </div>
             <div>
               <span>Received</span>
@@ -658,15 +722,15 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             {/* Handing over more than the bill is change owed back, not a
                 negative debt. "Pending ₹-35" is a sum nobody at a counter
                 should have to translate. */}
-            {totals.pending < 0 ? (
+            {pending < 0 ? (
               <div className="saved">
                 <span>Change due</span>
-                <strong>{rupees(-totals.pending, cur)}</strong>
+                <strong>{rupees(-pending, cur)}</strong>
               </div>
             ) : (
-              <div className={totals.pending > 0 ? 'due' : ''}>
+              <div className={pending > 0 ? 'due' : ''}>
                 <span>Pending</span>
-                <strong>{rupees(totals.pending, cur)}</strong>
+                <strong>{rupees(pending, cur)}</strong>
               </div>
             )}
           </div>
@@ -706,7 +770,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       {askPrint && (
         <Confirm
           title="Print this bill?"
-          message={`Order #${orderNo ?? '—'} · ${rupees(totals.grand, cur)}. It will be saved first, then sent to the printer.`}
+          message={`Order #${orderNo ?? '—'} · ${rupees(grand, cur)}. It will be saved first, then sent to the printer.`}
           yes="Print"
           no="Cancel"
           onNo={() => setAskPrint(false)}

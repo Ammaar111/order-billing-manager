@@ -86,6 +86,12 @@ ensureColumn('orders', 'completed_at', "TEXT DEFAULT ''");
 // an old bill still shows the figure it was printed with even if the rounding
 // rules ever change.
 ensureColumn('orders', 'total_discount', 'REAL DEFAULT 0');
+// The adjustment applied when the biller rounds an odd total off to a whole
+// rupee — positive when it rounded up, negative down. grand_total already has
+// this folded in (it is what was actually charged); this is kept separately,
+// the same way total_discount is, purely so an old bill can still explain
+// itself later ("why is this ₹142 and not ₹141.80").
+ensureColumn('orders', 'round_off', 'REAL DEFAULT 0');
 
 const DEFAULT_SETTINGS = {
   shop_name: 'Order Bill Manager',
