@@ -75,7 +75,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
             <div className="bp-line" key={it.sr_no}>
               <div className="bp-line-name">
                 {it.sr_no}. {it.product_name}
-                {it.product_id ? <em> {it.product_id}</em> : null}
               </div>
               <div className="bp-line-nums">
                 <span>
@@ -106,7 +105,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
                 {withNames && (
                   <td className="c-name">
                     {it.product_name}
-                    {it.product_id ? <em> ({it.product_id})</em> : null}
                   </td>
                 )}
                 <td className="c-num c-qty">{it.qty}</td>
@@ -170,6 +168,15 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
               {money(order.round_off) > 0 ? '+ ' : '− '}
               {cur}
               {fig(Math.abs(money(order.round_off)))}
+            </span>
+          </div>
+        )}
+        {money(order.old_balance) !== 0 && (
+          <div>
+            <span>Old balance</span>
+            <span>
+              {cur}
+              {fig(order.old_balance)}
             </span>
           </div>
         )}

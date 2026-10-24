@@ -49,7 +49,7 @@ export function printBill(mode, widthMm = 80) {
       const w = Number(widthMm) || 80;
       style.textContent = `@page { size: ${w}mm ${receiptHeightMm(w)}mm; margin: 0; }`;
     } else {
-      style.textContent = '@page { size: A4 portrait; margin: 14mm 12mm; }';
+      style.textContent = '@page { size: A4 portrait; margin: 0; }';
     }
     document.head.appendChild(style);
 
@@ -80,7 +80,7 @@ function billHtml(order, items, settings) {
     .map(
       (it) => `<tr>
       <td>${it.sr_no}</td>
-      ${withNames ? `<td>${esc(it.product_name)}${it.product_id ? ` (${esc(it.product_id)})` : ''}</td>` : ''}
+      ${withNames ? `<td>${esc(it.product_name)}</td>` : ''}
       <td align="right">${it.qty}</td>
       <td align="right">${n2(it.rate)}</td>
       <td align="right">${it.discount || 0}</td>
@@ -125,6 +125,7 @@ function billHtml(order, items, settings) {
       ${line('Bill total', cur + n2(order.items_total))}
       ${money(order.total_discount) > 0 ? line('Discount given', '- ' + cur + n2(order.total_discount)) : ''}
       ${line('Packing', cur + n2(order.packing))}
+      ${money(order.old_balance) !== 0 ? line('Old balance', cur + n2(order.old_balance)) : ''}
       ${money(order.round_off) !== 0 ? line('Round off', (money(order.round_off) > 0 ? '+ ' : '- ') + cur + n2(Math.abs(order.round_off))) : ''}
       ${line('Grand total', cur + n2(order.grand_total), true)}
       ${line('Amount received', cur + n2(order.amount_paid))}
@@ -180,6 +181,7 @@ export function billText(order, items, settings) {
     `Total qty: ${money(order.total_qty)}`,
     money(order.total_discount) > 0 ? `Discount given: -${cur}${money(order.total_discount)}` : '',
     `Packing: ${cur}${money(order.packing)}`,
+    money(order.old_balance) !== 0 ? `Old balance: ${cur}${money(order.old_balance)}` : '',
     money(order.round_off) !== 0
       ? `Round off: ${money(order.round_off) > 0 ? '+' : '-'}${cur}${money(Math.abs(order.round_off))}`
       : '',

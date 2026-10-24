@@ -92,6 +92,10 @@ ensureColumn('orders', 'total_discount', 'REAL DEFAULT 0');
 // the same way total_discount is, purely so an old bill can still explain
 // itself later ("why is this ₹142 and not ₹141.80").
 ensureColumn('orders', 'round_off', 'REAL DEFAULT 0');
+// What the customer already owed before this bill. It is folded into
+// grand_total (so Amount received / pending cover it) and kept separately so an
+// old bill can still show it as its own line.
+ensureColumn('orders', 'old_balance', 'REAL DEFAULT 0');
 
 const DEFAULT_SETTINGS = {
   shop_name: 'Order Bill Manager',

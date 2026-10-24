@@ -197,7 +197,7 @@ app.get('/api/orders/:id', (req, res) => {
 // One place computes a bill's figures. The browser sends what was typed; every
 // total on the saved order is worked out here, so an edited page cannot make
 // a bill add up to something it does not.
-function totalsFor(rawItems, packing, roundOff) {
+function totalsFor(rawItems, packing, roundOff, oldBalance) {
   const items = [];
   let itemsTotal = 0;
   let totalQty = 0;
@@ -233,7 +233,8 @@ function totalsFor(rawItems, packing, roundOff) {
 
   const pack = money(packing);
   const roundOffAmt = money(roundOff);
-  const grand = money(itemsTotal + pack + roundOffAmt);
+  const oldBal = money(oldBalance);
+  const grand = money(itemsTotal + pack + oldBal + roundOffAmt);
   return {
     items,
     itemsTotal: money(itemsTotal),
@@ -241,6 +242,7 @@ function totalsFor(rawItems, packing, roundOff) {
     discountTotal: money(discountTotal),
     packing: pack,
     roundOff: roundOffAmt,
+    oldBalance: oldBal,
     grand,
   };
 }
@@ -251,7 +253,7 @@ function writeOrder(body, existing) {
   // it under and the customer list does not fill up with empty rows.
   const name = str(body.customer_name) || 'Cash';
 
-  const t = totalsFor(Array.isArray(body.items) ? body.items : [], body.packing, body.round_off);
+  const t = totalsFor(Array.isArray(body.items) ? body.items : [], body.packing, body.round_off, body.old_balance);
   const paid = money(body.amount_paid);
   const pending = money(t.grand - paid);
   const now = nowStr();
@@ -262,7 +264,7 @@ function writeOrder(body, existing) {
       db.prepare(
         `UPDATE orders SET customer_name = ?, customer_phone = ?, address = ?,
                 packing = ?, amount_paid = ?, items_total = ?, grand_total = ?,
-                pending = ?, total_qty = ?, total_discount = ?, round_off = ?,
+                pending = ?, total_qty = ?, total_discount = ?, round_off = ?, old_balance = ?,
                 bill_type = ?, note = ?, updated_at = ?
           WHERE id = ?`
       ).run(
@@ -277,6 +279,7 @@ function writeOrder(body, existing) {
         t.totalQty,
         t.discountTotal,
         t.roundOff,
+        t.oldBalance,
         str(body.bill_type) || 'full',
         str(body.note),
         now,
@@ -291,8 +294,8 @@ function writeOrder(body, existing) {
         .prepare(
           `INSERT INTO orders (order_no, customer_name, customer_phone, address, packing,
                                amount_paid, items_total, grand_total, pending, total_qty,
-                               total_discount, round_off, bill_type, note, order_date, created_at, updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                               total_discount, round_off, old_balance, bill_type, note, order_date, created_at, updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
         )
         .run(
           nextOrderNo(),
@@ -307,6 +310,7 @@ function writeOrder(body, existing) {
           t.totalQty,
           t.discountTotal,
           t.roundOff,
+          t.oldBalance,
           str(body.bill_type) || 'full',
           str(body.note),
           str(body.order_date) || todayStr(),
@@ -332,6 +336,23 @@ function writeOrder(body, existing) {
         it.discount,
         it.line_total
       );
+    }
+
+    // A product typed into a bill that the catalogue has never heard of is
+    // added to it at the rate on that line, so it is there next time. Matched
+    // by name, case-blind, so re-saving or editing a bill never duplicates it.
+    if (str(body.bill_type) !== 'qty-rate') {
+      const known = db.prepare('SELECT 1 FROM products WHERE LOWER(name) = LOWER(?)');
+      const addProduct = db.prepare(
+        'INSERT INTO products (product_id, name, cost, stock, contents, image) VALUES (?, ?, ?, 0, ?, ?)'
+      );
+      for (const it of t.items) {
+        if (!it.product_name || it.product_id || known.get(it.product_name)) continue;
+        // ID = first two letters of the name + the rate, e.g. "Kitchen set" at
+        // 250 becomes KI250.
+        const letters = it.product_name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 2).toUpperCase();
+        addProduct.run(`${letters || 'PR'}${it.rate}`, it.product_name, it.rate, '', '');
+      }
     }
     const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(id);
     return { ...order, items: itemsOf(id) };

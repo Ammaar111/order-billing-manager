@@ -252,3 +252,57 @@ in Command Prompt, where that block doesn't apply.
 the first `exit /b 0` after it with the old four lines: check
 `frontend\dist\index.html` exists, else `pushd frontend`, `call npm run build`,
 `popd`.
+
+---
+
+## 7. No product ID on the bill, no browser header/footer on the print
+
+**What changed.**
+1. The product ID (the `(ID)` after each product name) no longer prints on the
+   bill, the PDF, or the Word/HTML download.
+2. "Order Bill Manager" (top) and "localhost:4100/…" (bottom) on the printed
+   page and saved PDF were the browser's own header/footer, not part of the
+   bill. Chrome only prints them when the page has a margin, so the A4 `@page`
+   margin is now `0` and the white border comes from padding instead.
+
+**Where.**
+- Product ID: the two `product_id` lines in
+  [`BillPrint.jsx`](frontend/src/components/BillPrint.jsx) and the one in
+  `billHtml` in [`print.js`](frontend/src/print.js). To bring it back, re-add
+  `{it.product_id ? <em> ({it.product_id})</em> : null}` after the product name.
+- Header/footer: `@page { size: A4 portrait; margin: 0; }` in `print.js`, plus
+  `body[data-print-mode='a4'] .print-only { padding: 14mm 12mm; }` in
+  [`styles.css`](frontend/src/styles.css). To change the A4 border, edit that
+  padding. Thermal was already margin 0.
+
+If a header/footer ever still appears, untick "Headers and footers" under
+"More settings" in the print dialog.
+
+---
+
+## 8. Enter skips Sr, and an Old balance field
+
+- **Enter no longer stops on the Sr cell** (it still can be reached with the
+  arrow keys / click). `ENTER_COLUMNS` and the new-row focus in
+  [`BillForm.jsx`](frontend/src/screens/BillForm.jsx). To undo, put `'sr'` back
+  at the front of both `ENTER_COLUMNS` lists.
+- **Old balance** (what the customer owed before this bill): a new field between
+  Packing and Amount received. It is **added into Grand total**, so Amount
+  received / Pending cover it, and prints as an "Old balance" line above Grand
+  total (also in the Word download and share text). Stored in a new
+  `orders.old_balance` column (added automatically on start-up; existing bills
+  read as 0). Note: since it's inside `grand_total`, the Reports revenue figure
+  counts it too.
+
+---
+
+## 9. New products typed into a bill are added to Products
+
+When a bill is saved with a product name that isn't in the catalogue (and wasn't
+picked from the suggestions), the server adds it to Products at that line's
+rate, stock 0, with an automatic ID of the first two letters of the name plus the rate
+("Kitchen set" at 250 → `KI250`). Matching is by name, ignoring case, so resaving never
+duplicates. Qty & rate bills have no names, so nothing is added. It lives at
+the end of `writeOrder` in [`backend/server.js`](backend/server.js); delete that
+`if (str(body.bill_type) !== 'qty-rate')` block to turn it off. Restart the
+server for it to take effect.

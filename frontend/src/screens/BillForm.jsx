@@ -16,8 +16,8 @@ const COLUMNS = {
 // biller pays for hundreds of times a day. It stays reachable by Tab, by arrow
 // key and by clicking, for the times a line really is rounded off by hand.
 const ENTER_COLUMNS = {
-  full: ['sr', 'name', 'qty', 'rate', 'discount'],
-  'qty-rate': ['sr', 'qty', 'rate'],
+  full: ['name', 'qty', 'rate', 'discount'],
+  'qty-rate': ['qty', 'rate'],
 };
 
 // The cell that decides whether a row is a row at all. Enter on it while it is
@@ -44,6 +44,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   const [customer, setCustomer] = useState({ name: '', address: '', phone: '' });
   const [rows, setRows] = useState([blankRow()]);
   const [packing, setPacking] = useState('');
+  const [oldBalance, setOldBalance] = useState('');
   const [paid, setPaid] = useState('');
   const [note, setNote] = useState('');
   const [orderDate, setOrderDate] = useState(todayStr());
@@ -84,6 +85,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
           phone: o.customer_phone || '',
         });
         setPacking(o.packing ? String(o.packing) : '');
+        setOldBalance(o.old_balance ? String(o.old_balance) : '');
         setPaid(o.amount_paid ? String(o.amount_paid) : '');
         setPaidTouched(true); // a saved order keeps what it was actually paid, never re-defaulted
         setRoundOff(o.round_off || 0);
@@ -136,7 +138,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       }
       return line;
     });
-    const grandRaw = money(items + num(packing));
+    const grandRaw = money(items + num(packing) + num(oldBalance));
     return {
       lines,
       items: money(items),
@@ -144,7 +146,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       discount: money(discount),
       grandRaw,
     };
-  }, [rows, packing]);
+  }, [rows, packing, oldBalance]);
 
   // The round-off only counts while it still rounds the CURRENT raw total to a
   // whole rupee. An edit that changes items or packing after a round-off was
@@ -199,7 +201,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   const addRow = () => {
     markDirty();
     setRows((rs) => {
-      pendingFocus.current = `row-${rs.length}-sr`;
+      pendingFocus.current = `row-${rs.length}-${ENTER_COLUMNS[billType][0]}`;
       return [...rs, blankRow()];
     });
   };
@@ -359,6 +361,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       packing: num(packing),
       amount_paid: num(paid),
       round_off: effectiveRoundOff,
+      old_balance: num(oldBalance),
       bill_type: billType,
       note,
       order_date: orderDate,
@@ -664,6 +667,16 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             />
           </label>
           <label className="field money-field">
+            <span>Old balance</span>
+            <input
+              {...numProps(oldBalance, (v) => {
+                setOldBalance(v);
+                markDirty();
+              }, 'old-balance')}
+              placeholder="0"
+            />
+          </label>
+          <label className="field money-field">
             <span>Amount received</span>
             <input
               {...numProps(paid, (v) => {
@@ -683,6 +696,12 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
               <span>Bill total</span>
               <strong>{rupees(totals.items, cur)}</strong>
             </div>
+            {num(oldBalance) > 0 && (
+              <div>
+                <span>Old balance</span>
+                <strong>{rupees(num(oldBalance), cur)}</strong>
+              </div>
+            )}
             {totals.discount > 0 && (
               <div className="saved">
                 <span>Discount given</span>

@@ -643,7 +643,7 @@ tr:hover .row-x, .row-x:focus { opacity: 1; }
 
 .totals-card {
   display: grid;
-  grid-template-columns: 1fr 1fr 2fr;
+  grid-template-columns: 1fr 1fr 1fr 2fr;
   gap: 18px;
   align-items: start;
 }
@@ -1161,6 +1161,10 @@ tr:hover .row-x, .row-x:focus { opacity: 1; }
     display: block !important;
     height: auto !important;
   }
+  /* @page margin is 0 so the browser has no margin box to print its own header
+     and footer (page title and localhost URL) into. A4 gets its white border
+     from padding here instead. */
+  body[data-print-mode='a4'] .print-only { padding: 14mm 12mm; }
   /* The receipt has to survive a printer that only does black, so nothing on
      the paper is allowed to depend on a colour. */
   .bill-paper { color: #000; }
