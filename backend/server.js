@@ -2,6 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const express = require('express');
 const multer = require('multer');
+const compression = require('compression');
 
 const { db, getSettings, setSetting, backup } = require('./db');
 const { todayStr, nowStr } = require('./dates');
@@ -11,6 +12,10 @@ const PORT = process.env.PORT || 4100;
 const UPLOADS = path.join(__dirname, 'uploads');
 fs.mkdirSync(UPLOADS, { recursive: true });
 
+// Gzip everything text-shaped. The built interface is a few hundred KB of
+// JavaScript and the Orders list is a long JSON array, both of which a phone on
+// shop wi-fi would otherwise download uncompressed.
+app.use(compression());
 app.use(express.json({ limit: '2mb' }));
 // The app posts products as multipart (there is a photo) and everything else as
 // JSON. Form-encoded is accepted too so a plain HTML form or a curl one-liner
@@ -474,7 +479,9 @@ app.post('/api/settings/backup', (req, res) => {
 
 /* ----------------------------------------------------------------- static */
 
-app.use('/uploads', express.static(UPLOADS));
+// Product photos are written once under a timestamped name and never changed,
+// so the phone can keep them rather than asking again on every visit.
+app.use('/uploads', express.static(UPLOADS, { maxAge: '7d', immutable: true }));
 
 const DIST = path.join(__dirname, '..', 'frontend', 'dist');
 // index.html, not the folder: an interrupted build leaves the folder behind with
@@ -482,7 +489,19 @@ const DIST = path.join(__dirname, '..', 'frontend', 'dist');
 const BUILT = fs.existsSync(path.join(DIST, 'index.html'));
 
 if (BUILT) {
-  app.use(express.static(DIST));
+  // Vite names its bundles by content hash, so those can be cached for good;
+  // index.html is the one file that must always be re-checked.
+  app.use(
+    express.static(DIST, {
+      setHeaders: (res, file) => {
+        if (/[\\/]assets[\\/]/.test(file)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    })
+  );
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) return next();
     res.sendFile(path.join(DIST, 'index.html'));

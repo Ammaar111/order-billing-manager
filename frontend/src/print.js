@@ -135,7 +135,7 @@ function billHtml(order, items, settings) {
 </body></html>`;
 }
 
-function download(filename, blob) {
+export function downloadFile(filename, blob) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -149,14 +149,14 @@ function download(filename, blob) {
 // Word opens an .doc that is really HTML, which keeps the table editable and
 // avoids shipping a document library for one button.
 export function downloadWord(order, items, settings) {
-  download(
+  downloadFile(
     `order-${order.order_no}-${order.customer_name.replace(/[^\w]+/g, '-')}.doc`,
     new Blob(['﻿', billHtml(order, items, settings)], { type: 'application/msword' })
   );
 }
 
 export function downloadHtml(order, items, settings) {
-  download(
+  downloadFile(
     `order-${order.order_no}.html`,
     new Blob([billHtml(order, items, settings)], { type: 'text/html' })
   );

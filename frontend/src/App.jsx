@@ -85,7 +85,7 @@ export default function App() {
   const openBill = (orderId) => startBill(orderId);
 
   return (
-    <div className="app">
+    <div className={`app${bill ? ' in-bill' : ''}`}>
       <header className="topbar">
         <button
           type="button"

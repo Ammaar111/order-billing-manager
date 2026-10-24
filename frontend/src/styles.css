@@ -907,6 +907,11 @@ tr:hover .row-x, .row-x:focus { opacity: 1; }
   font-size: 0.75rem;
   color: var(--muted);
 }
+.sheet-actions button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .sheet-actions .primary small { color: rgba(255, 255, 255, 0.8); }
 .sheet-actions button.ghost { align-items: center; }
 
@@ -1398,3 +1403,176 @@ tr:hover .row-x, .row-x:focus { opacity: 1; }
 }
 .bill-thermal .bp-grand { font-size: 9.5pt; }
 .bill-thermal .bp-thanks { margin-top: 6pt; }
+
+.sheet-hint {
+  font-size: 0.8125rem;
+  color: var(--muted);
+  padding: 2px 4px 0;
+}
+
+/* ------------------------------------------------------- phone, for real */
+
+/* Tapping should act at once, not wait out the double-tap-to-zoom delay, and
+   the grey flash a browser paints over whatever was tapped is just noise. */
+button,
+a,
+input,
+label,
+summary {
+  touch-action: manipulation;
+}
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 620px) {
+  /* iOS zooms the page in on any field under 16px and leaves it zoomed. */
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  /* A blur filter re-renders everything behind it on every scroll frame —
+     cheap on a desktop GPU, the main reason a mid-range phone stutters. */
+  .topbar {
+    background: var(--bg);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .tabs {
+    background: #fff;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .sheet-backdrop,
+  .del.corner {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .sheet-backdrop { background: rgba(0, 0, 0, 0.4); }
+  .card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); padding: 14px; }
+  .items-card { padding: 4px 4px 10px; }
+
+  /* The bill is open: the bottom tabs would sit on top of the keyboard and the
+     Save bar. Back / the shop name still leave. */
+  .in-bill .tabs { display: none; }
+  .in-bill main { padding-bottom: 12px; }
+
+  /* ---- a bill line becomes a card instead of a row of a sideways table --- */
+
+  .items-scroll { overflow: visible; }
+  table.items,
+  table.items tbody,
+  table.items tr,
+  table.items td {
+    display: block;
+  }
+  table.items,
+  table.items.no-names { min-width: 0; }
+  table.items thead { display: none; }
+
+  table.items tr {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    position: relative;
+    padding: 12px 40px 12px 34px;
+    border-bottom: 1px solid var(--line);
+  }
+  table.items.no-names tr { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  table.items tr:last-child { border-bottom: none; }
+
+  table.items td { padding: 0; border: none; min-width: 0; width: auto; }
+  table.items td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.6875rem;
+    color: var(--muted);
+    margin-bottom: 2px;
+    text-align: center;
+  }
+
+  table.items .c-name { grid-column: 1 / -1; min-width: 0; }
+
+  /* The line number sits in the left gutter; the × in the right. */
+  table.items .c-sr {
+    position: absolute;
+    left: 4px;
+    top: 22px;
+    width: 26px;
+  }
+  table.items.no-names .c-sr { top: 38px; }
+  table.items .c-sr::before { display: none; }
+  table.items .sr-input {
+    border: none;
+    background: none;
+    padding: 0;
+    width: 26px;
+    font-size: 0.8125rem;
+  }
+
+  table.items .c-act {
+    position: absolute;
+    top: 6px;
+    right: 2px;
+    width: auto;
+  }
+  .row-x { opacity: 1; font-size: 1.5rem; padding: 6px 12px; color: var(--muted); }
+
+  /* Without a table's column lines, fields need their own edges to read as
+     fields. */
+  table.items input,
+  table.items input:hover {
+    border: 1px solid var(--line);
+    background: var(--surface);
+    padding: 10px 8px;
+  }
+  table.items input:focus { border-color: var(--accent); }
+  table.items .c-sr input { border: none; background: none; }
+
+  .items-foot { padding: 10px 10px 0; }
+  .items-foot .hint { display: none; } /* keyboard hints mean nothing on glass */
+
+  /* ---- the Save bar ------------------------------------------------------ */
+
+  .bill-actions {
+    flex-wrap: wrap;
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    background: var(--bg);
+    border-top: 1px solid var(--line);
+    margin: 0 -12px;
+    padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  }
+  .bill-actions .primary { flex: 1 1 100%; padding: 12px 18px; }
+  .bill-actions button { flex: 1 1 auto; }
+
+  /* ---- dialogs come up from the bottom, where a thumb is ------------------ */
+
+  .sheet,
+  .sheet-wide,
+  .sheet-narrow {
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    width: 100%;
+    transform: none;
+    max-height: 90vh;
+    max-height: 90dvh;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding: 20px 16px calc(16px + env(safe-area-inset-bottom));
+    animation: slide-up 0.2s ease-out;
+    overscroll-behavior: contain;
+  }
+  @keyframes slide-up { from { transform: translateY(24px); opacity: 0; } }
+
+  .sheet-actions button,
+  .sheet-actions .btn-like { padding: 14px 16px; }
+
+  /* The product list opens under the field; keep it inside the screen. */
+  .picker { max-height: 40vh; }
+}

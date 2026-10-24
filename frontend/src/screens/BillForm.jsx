@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import ProductPicker from '../components/ProductPicker.jsx';
 import SaveSheet from '../components/SaveSheet.jsx';
@@ -36,6 +36,96 @@ const blankRow = () => ({
   // Cost follows qty x rate until someone types over it, then it stays put —
   // a shopkeeper rounding a line off should not have it recalculated away.
   costManual: false,
+});
+
+const numProps = (value, onValue, chainName) => ({
+  type: 'text',
+  inputMode: 'decimal',
+  // No type="number": the shop asked for no up/down arrows, and a number
+  // input also changes value on a stray scroll over the cell.
+  value,
+  'data-chain': chainName,
+  onChange: (e) => onValue(cleanNumeric(e.target.value)),
+  onFocus: (e) => e.target.select(),
+});
+
+/**
+ * One line of the bill. Memoised so a keystroke in one row re-renders that row
+ * alone — with the whole bill in one component, every character typed repainted
+ * every row and refetched every product list, which a phone felt as lag.
+ * `setRow` and `removeRow` are stable, so the only prop that changes is `r`.
+ */
+const ItemRow = memo(function ItemRow({ r, i, billType, cur, setRow, removeRow }) {
+  return (
+    <tr>
+      <td className="c-sr">
+        <input
+          className="sr-input"
+          data-chain={`row-${i}-sr`}
+          type="text"
+          readOnly
+          value={i + 1}
+          tabIndex={0}
+        />
+      </td>
+      {billType === 'full' && (
+        <td className="c-name">
+          <ProductPicker
+            data-chain={`row-${i}-name`}
+            currency={cur}
+            value={r.product_name}
+            onChange={(v) => setRow(i, { product_name: v, product_id: '' })}
+            onPick={(p) =>
+              setRow(i, {
+                product_name: p.name,
+                product_id: p.product_id,
+                // The catalogue price is a starting point; the
+                // rate cell is still the one that decides.
+                rate: p.cost ? String(p.cost) : r.rate,
+              })
+            }
+            placeholder="Type a name or an ID"
+          />
+        </td>
+      )}
+      <td className="c-num" data-label="Qty">
+        <input {...numProps(r.qty, (v) => setRow(i, { qty: v }), `row-${i}-qty`)} />
+      </td>
+      <td className="c-num" data-label="Rate">
+        <input {...numProps(r.rate, (v) => setRow(i, { rate: v }), `row-${i}-rate`)} />
+      </td>
+      <td className="c-num" data-label="Cost">
+        <input
+          {...numProps(
+            r.cost,
+            (v) => setRow(i, { cost: v, costManual: v !== '' }),
+            `row-${i}-cost`
+          )}
+          className={r.costManual ? 'cost-manual' : ''}
+          title={r.costManual ? 'Typed by hand' : 'Qty × rate'}
+        />
+      </td>
+      {billType === 'full' && (
+        <td className="c-num" data-label="Disc %">
+          <input
+            {...numProps(r.discount, (v) => setRow(i, { discount: v }), `row-${i}-discount`)}
+            placeholder="—"
+          />
+        </td>
+      )}
+      <td className="c-act">
+        <button
+          type="button"
+          className="row-x"
+          tabIndex={-1}
+          onClick={() => removeRow(i)}
+          aria-label={`Remove row ${i + 1}`}
+        >
+          ×
+        </button>
+      </td>
+    </tr>
+  );
 });
 
 export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
@@ -183,20 +273,23 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
 
   /* --------------------------------------------------------- row editing */
 
-  const setRow = (i, patch) => {
-    markDirty();
-    setRows((rs) =>
-      rs.map((r, j) => {
-        if (j !== i) return r;
-        const next = { ...r, ...patch };
-        if (!next.costManual && ('qty' in patch || 'rate' in patch)) {
-          const c = num(next.qty) * num(next.rate);
-          next.cost = c ? String(money(c)) : '';
-        }
-        return next;
-      })
-    );
-  };
+  const setRow = useCallback(
+    (i, patch) => {
+      markDirty();
+      setRows((rs) =>
+        rs.map((r, j) => {
+          if (j !== i) return r;
+          const next = { ...r, ...patch };
+          if (!next.costManual && ('qty' in patch || 'rate' in patch)) {
+            const c = num(next.qty) * num(next.rate);
+            next.cost = c ? String(money(c)) : '';
+          }
+          return next;
+        })
+      );
+    },
+    [markDirty]
+  );
 
   const addRow = () => {
     markDirty();
@@ -206,10 +299,13 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
     });
   };
 
-  const removeRow = (i) => {
-    markDirty();
-    setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((_, j) => j !== i)));
-  };
+  const removeRow = useCallback(
+    (i) => {
+      markDirty();
+      setRows((rs) => (rs.length === 1 ? [blankRow()] : rs.filter((_, j) => j !== i)));
+    },
+    [markDirty]
+  );
 
   useEffect(() => {
     if (!pendingFocus.current) return;
@@ -448,17 +544,6 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
 
   /* --------------------------------------------------------------- view */
 
-  const numProps = (value, onValue, chainName) => ({
-    type: 'text',
-    inputMode: 'decimal',
-    // No type="number": the shop asked for no up/down arrows, and a number
-    // input also changes value on a stray scroll over the cell.
-    value,
-    'data-chain': chainName,
-    onChange: (e) => onValue(cleanNumeric(e.target.value)),
-    onFocus: (e) => e.target.select(),
-  });
-
   return (
     <div className="screen bill-screen">
       <div className="bill-top">
@@ -566,78 +651,15 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
               </thead>
               <tbody>
                 {rows.map((r, i) => (
-                  <tr key={r.key}>
-                    <td className="c-sr">
-                      <input
-                        className="sr-input"
-                        data-chain={`row-${i}-sr`}
-                        type="text"
-                        readOnly
-                        value={i + 1}
-                        tabIndex={0}
-                      />
-                    </td>
-                    {billType === 'full' && (
-                      <td className="c-name">
-                        <ProductPicker
-                          data-chain={`row-${i}-name`}
-                          currency={cur}
-                          value={r.product_name}
-                          onChange={(v) => setRow(i, { product_name: v, product_id: '' })}
-                          onPick={(p) =>
-                            setRow(i, {
-                              product_name: p.name,
-                              product_id: p.product_id,
-                              // The catalogue price is a starting point; the
-                              // rate cell is still the one that decides.
-                              rate: p.cost ? String(p.cost) : r.rate,
-                            })
-                          }
-                          placeholder="Type a name or an ID"
-                        />
-                      </td>
-                    )}
-                    <td className="c-num">
-                      <input {...numProps(r.qty, (v) => setRow(i, { qty: v }), `row-${i}-qty`)} />
-                    </td>
-                    <td className="c-num">
-                      <input {...numProps(r.rate, (v) => setRow(i, { rate: v }), `row-${i}-rate`)} />
-                    </td>
-                    <td className="c-num">
-                      <input
-                        {...numProps(
-                          r.cost,
-                          (v) => setRow(i, { cost: v, costManual: v !== '' }),
-                          `row-${i}-cost`
-                        )}
-                        className={r.costManual ? 'cost-manual' : ''}
-                        title={r.costManual ? 'Typed by hand' : 'Qty × rate'}
-                      />
-                    </td>
-                    {billType === 'full' && (
-                      <td className="c-num">
-                        <input
-                          {...numProps(
-                            r.discount,
-                            (v) => setRow(i, { discount: v }),
-                            `row-${i}-discount`
-                          )}
-                          placeholder="—"
-                        />
-                      </td>
-                    )}
-                    <td className="c-act">
-                      <button
-                        type="button"
-                        className="row-x"
-                        tabIndex={-1}
-                        onClick={() => removeRow(i)}
-                        aria-label={`Remove row ${i + 1}`}
-                      >
-                        ×
-                      </button>
-                    </td>
-                  </tr>
+                  <ItemRow
+                    key={r.key}
+                    r={r}
+                    i={i}
+                    billType={billType}
+                    cur={cur}
+                    setRow={setRow}
+                    removeRow={removeRow}
+                  />
                 ))}
               </tbody>
             </table>

@@ -125,7 +125,7 @@ Press Save and the app asks where the bill should go:
 | **Save as PDF** | Opens the print window. Choose **Save as PDF** as the printer and pick a folder. |
 | **Print receipt** | The same bill on the thermal roll, at the width set in Settings. |
 | **Word document** | Downloads a `.doc` that opens in Word, LibreOffice or Google Docs. |
-| **Share** | The phone's own share sheet where there is one, otherwise WhatsApp, email or copy. |
+| **Share** | Sends the bill as a **PDF file**. Where the browser can share files (a phone on https, or this computer's own `localhost`) the phone's share sheet opens with the PDF attached. Over plain `http://<pc-ip>:4100` browsers refuse file sharing, so WhatsApp / email save the PDF and open the app — attach it with the paperclip. |
 
 Nothing is lost by closing that window — the order is already saved. It can be
 reopened from Orders at any time.

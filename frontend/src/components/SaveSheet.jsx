@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import BillPrint from './BillPrint.jsx';
-import { billText, downloadWord, printBill } from '../print.js';
-import { rupees } from '../utils.js';
+import { billText, downloadFile, downloadWord, printBill } from '../print.js';
+import { billPdf } from '../pdf.js';
+import { money, rupees } from '../utils.js';
 
 /**
  * What happens the moment a bill is saved: the shopkeeper is asked where it
@@ -23,8 +24,34 @@ export default function SaveSheet({
   // dead button; the webmail sites always work in the browser that is open.
   const [view, setView] = useState('main');
   const [copied, setCopied] = useState('');
+  // The bill as an actual PDF file, built as soon as the sheet opens so that
+  // tapping Share is instant. navigator.share only works inside the tap that
+  // asked for it; if the file were still being drawn when the tap landed, the
+  // browser would refuse and the bill would go out as bare text again.
+  const [pdf, setPdf] = useState(null);
+  const [pdfFailed, setPdfFailed] = useState(false);
+  const [hint, setHint] = useState('');
   const items = order.items || [];
   const text = billText(order, items, settings);
+  const cur = settings.currency || '₹';
+
+  useEffect(() => {
+    let alive = true;
+    billPdf(order, items, settings)
+      .then((f) => alive && setPdf(f))
+      .catch(() => alive && setPdfFailed(true));
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order]);
+
+  // Phones can hand a file straight to WhatsApp. That needs a secure page
+  // (https or localhost), so a phone opening the shop PC over plain wi-fi gets
+  // `false` here and falls back to saving the file instead.
+  const canShareFile = !!(pdf && navigator.canShare && navigator.canShare({ files: [pdf] }));
+  // Print dialogs are a desktop idea; on a phone "Save as PDF" should just save.
+  const touch = window.matchMedia?.('(pointer: coarse)').matches;
 
   useEffect(() => {
     const onKey = (e) => {
@@ -48,19 +75,37 @@ export default function SaveSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPrint]);
 
-  const share = async () => {
-    // A phone has its own share sheet and it is better than anything here.
-    // A desktop does not — navigator.share simply does not exist on Linux
-    // Chrome — so that falls through to the list below.
-    if (navigator.share) {
-      try {
-        await navigator.share({ title: `Order #${order.order_no}`, text });
-        return;
-      } catch {
-        // Cancelled or not permitted — fall through to the links.
-      }
+  const shareFile = async () => {
+    try {
+      await navigator.share({ files: [pdf], title: `Order #${order.order_no}` });
+      return true;
+    } catch (err) {
+      // Closing the share sheet is an answer, not a failure.
+      return err?.name === 'AbortError';
     }
+  };
+
+  const share = async () => {
+    if (canShareFile && (await shareFile())) return;
     setView('share');
+  };
+
+  const savePdf = () => {
+    if (!pdf) return false;
+    downloadFile(pdf.name, pdf);
+    return true;
+  };
+
+  const sendWhatsApp = () => {
+    // wa.me cannot carry a file, so the PDF is saved first and the biller
+    // attaches it with the paperclip. The prefilled line says what it is.
+    const saved = savePdf();
+    setHint(
+      saved
+        ? 'PDF saved. In WhatsApp tap the paperclip, then Document, and choose it.'
+        : ''
+    );
+    window.open(waHref, '_blank', 'noopener');
   };
 
   const copy = async () => {
@@ -75,7 +120,14 @@ export default function SaveSheet({
 
   const subject = `Order #${order.order_no} — ${settings.shop_name || 'Bill'}`;
   const su = encodeURIComponent(subject);
-  const body = encodeURIComponent(text);
+  // The bill itself travels as the PDF; the message only says what it is.
+  const blurb = `${subject}\nTotal ${cur}${money(order.grand_total)}${
+    order.pending > 0 ? `, pending ${cur}${money(order.pending)}` : ''
+  }. Bill attached.`;
+  const body = encodeURIComponent(blurb);
+  // Mail keeps the full figures in the body: it is the one place a bill is read
+  // without opening an attachment.
+  const mailBody = encodeURIComponent(text);
   const phone = (order.customer_phone || '').replace(/\D/g, '');
 
   // Without a number wa.me still opens WhatsApp on its own contact picker, so
@@ -87,25 +139,25 @@ export default function SaveSheet({
       key: 'gmail',
       name: 'Gmail',
       note: 'Opens in the browser',
-      href: `https://mail.google.com/mail/?view=cm&fs=1&su=${su}&body=${body}`,
+      href: `https://mail.google.com/mail/?view=cm&fs=1&su=${su}&body=${mailBody}`,
     },
     {
       key: 'outlook',
       name: 'Outlook',
       note: 'Opens in the browser',
-      href: `https://outlook.live.com/mail/0/deeplink/compose?subject=${su}&body=${body}`,
+      href: `https://outlook.live.com/mail/0/deeplink/compose?subject=${su}&body=${mailBody}`,
     },
     {
       key: 'yahoo',
       name: 'Yahoo Mail',
       note: 'Opens in the browser',
-      href: `https://compose.mail.yahoo.com/?subject=${su}&body=${body}`,
+      href: `https://compose.mail.yahoo.com/?subject=${su}&body=${mailBody}`,
     },
     {
       key: 'default',
       name: 'Mail app on this computer',
       note: 'Thunderbird, Outlook desktop, whatever is set up',
-      href: `mailto:?subject=${su}&body=${body}`,
+      href: `mailto:?subject=${su}&body=${mailBody}`,
     },
   ];
 
@@ -133,9 +185,15 @@ export default function SaveSheet({
 
         {view === 'main' && (
           <div className="sheet-actions">
-            <button type="button" className="primary" onClick={() => go('a4')}>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => (touch && pdf ? savePdf() : go('a4'))}
+            >
               Save as PDF
-              <small>Pick “Save as PDF” as the printer</small>
+              <small>
+                {touch && pdf ? 'Saves to this phone' : 'Pick “Save as PDF” as the printer'}
+              </small>
             </button>
             <button type="button" onClick={() => go('thermal')}>
               Print receipt
@@ -145,27 +203,42 @@ export default function SaveSheet({
               Word document
               <small>Opens in Word or Docs</small>
             </button>
-            <button type="button" onClick={share}>
+            <button type="button" onClick={share} disabled={!pdf && !pdfFailed}>
               Share
-              <small>WhatsApp, mail, anywhere</small>
+              <small>
+                {!pdf && !pdfFailed ? 'Preparing the PDF…' : 'The bill as a PDF — WhatsApp, mail, anywhere'}
+              </small>
             </button>
           </div>
         )}
 
         {view === 'share' && (
           <div className="sheet-actions">
-            <a className="btn-like" href={waHref} target="_blank" rel="noreferrer">
+            {canShareFile && (
+              <button type="button" className="primary" onClick={shareFile}>
+                Send the PDF
+                <small>Pick WhatsApp or any app</small>
+              </button>
+            )}
+            <button type="button" onClick={sendWhatsApp}>
               WhatsApp
-              <small>{phone ? `To ${order.customer_phone}` : 'Pick the contact in WhatsApp'}</small>
-            </a>
+              <small>
+                {phone ? `To ${order.customer_phone}` : 'Pick the contact in WhatsApp'} · you attach the PDF
+              </small>
+            </button>
             <button type="button" onClick={() => setView('email')}>
               Email
               <small>Gmail, Outlook, Yahoo or your mail app</small>
+            </button>
+            <button type="button" onClick={() => setHint(savePdf() ? 'PDF saved.' : '')}>
+              Download PDF
+              <small>{pdf ? `${Math.max(1, Math.round(pdf.size / 1024))} KB` : 'Preparing…'}</small>
             </button>
             <button type="button" onClick={copy}>
               Copy bill text
               <small>{copied || 'Paste it anywhere'}</small>
             </button>
+            {hint && <p className="sheet-hint">{hint}</p>}
             <button type="button" className="ghost" onClick={() => setView('main')}>
               Back
             </button>
@@ -179,12 +252,14 @@ export default function SaveSheet({
                 key={m.key}
                 className="btn-like"
                 href={m.href}
+                onClick={savePdf}
                 {...(m.key === 'default' ? {} : { target: '_blank', rel: 'noreferrer' })}
               >
                 {m.name}
                 <small>{m.note}</small>
               </a>
             ))}
+            <p className="sheet-hint">The PDF is saved as you open the mail — attach it there.</p>
             <button type="button" className="ghost" onClick={() => setView('share')}>
               Back
             </button>

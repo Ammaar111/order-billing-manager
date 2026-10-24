@@ -37,6 +37,10 @@ export default function ProductPicker({
       setMatches([]);
       return undefined;
     }
+    // Only a box someone is typing in needs a list. Without this, reopening a
+    // 20-line bill, or taking a product from the list, fired a search per row
+    // for lists nobody would ever see.
+    if (!open) return undefined;
     const mine = ++seq.current;
     const t = setTimeout(() => {
       api
@@ -49,7 +53,7 @@ export default function ProductPicker({
         .catch(() => {});
     }, 110);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, open]);
 
   const place = () => {
     const el = ref.current;
@@ -106,8 +110,8 @@ export default function ProductPicker({
 
   const popupStyle = rect
     ? (() => {
-        const width = 300;
         const gap = 8;
+        const width = Math.min(300, window.innerWidth - gap * 2);
         const room = window.innerWidth - rect.right;
         // Beside the input where there is room for it, underneath on a phone.
         const beside = room > width + gap * 2;
@@ -162,7 +166,7 @@ export default function ProductPicker({
               onMouseEnter={() => setActive(i)}
             >
               {p.image ? (
-                <img src={p.image} alt="" className="picker-img" />
+                <img src={p.image} alt="" className="picker-img" loading="lazy" decoding="async" />
               ) : (
                 <span className="picker-img picker-img-empty" />
               )}

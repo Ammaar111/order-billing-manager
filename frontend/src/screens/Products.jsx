@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { cleanNumeric, rupees } from '../utils.js';
+import { cleanNumeric, rupees, shrinkImage } from '../utils.js';
 
 const emptyForm = { product_id: '', name: '', cost: '', stock: '', contents: '' };
 
@@ -40,10 +40,11 @@ function ProductForm({ product, onClose, onSaved }) {
     }
   };
 
-  const pickFile = (f) => {
+  const pickFile = async (f) => {
     if (!f) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
+    const small = await shrinkImage(f);
+    setFile(small);
+    setPreview(URL.createObjectURL(small));
   };
 
   const submit = async () => {
@@ -213,7 +214,7 @@ export default function Products({ settings, newSignal = 0 }) {
                 onClick={() => setForm({ product: p })}
               >
                 {p.image ? (
-                  <img src={p.image} alt="" />
+                  <img src={p.image} alt="" loading="lazy" decoding="async" />
                 ) : (
                   <span className="no-image">No image</span>
                 )}
