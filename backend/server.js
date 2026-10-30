@@ -6,9 +6,13 @@ const compression = require('compression');
 
 const { db, getSettings, setSetting, backup } = require('./db');
 const { todayStr, nowStr } = require('./dates');
+const { listenSecure } = require('./https');
 
 const app = express();
 const PORT = process.env.PORT || 4100;
+// The same app again over https, for the phone: only a secure page is allowed to
+// attach a file (the bill's PDF) to WhatsApp or mail. Set to 0 to switch it off.
+const HTTPS_PORT = Number(process.env.HTTPS_PORT ?? 4443);
 const UPLOADS = path.join(__dirname, 'uploads');
 fs.mkdirSync(UPLOADS, { recursive: true });
 
@@ -208,7 +212,7 @@ function totalsFor(rawItems, packing, roundOff, oldBalance) {
   let totalQty = 0;
   let discountTotal = 0;
 
-  rawItems.forEach((it, i) => {
+  rawItems.forEach((it) => {
     const name = str(it.product_name);
     const qty = num(it.qty);
     const rate = money(it.rate);
@@ -225,7 +229,9 @@ function totalsFor(rawItems, packing, roundOff, oldBalance) {
     discountTotal += lineDiscount;
     totalQty += qty;
     items.push({
-      sr_no: i + 1,
+      // Numbered after blank rows are dropped, so a bill reads 1, 2, 3 and
+      // never 1, 3, 4 because an empty line sat between two items.
+      sr_no: items.length + 1,
       product_id: str(it.product_id),
       product_name: name,
       qty,
@@ -270,7 +276,7 @@ function writeOrder(body, existing) {
         `UPDATE orders SET customer_name = ?, customer_phone = ?, address = ?,
                 packing = ?, amount_paid = ?, items_total = ?, grand_total = ?,
                 pending = ?, total_qty = ?, total_discount = ?, round_off = ?, old_balance = ?,
-                bill_type = ?, note = ?, updated_at = ?
+                bill_type = ?, note = ?, order_date = ?, updated_at = ?
           WHERE id = ?`
       ).run(
         name,
@@ -287,6 +293,8 @@ function writeOrder(body, existing) {
         t.oldBalance,
         str(body.bill_type) || 'full',
         str(body.note),
+        // The date picker on a saved bill used to change nothing.
+        str(body.order_date) || existing.order_date,
         now,
         existing.id
       );
@@ -477,6 +485,10 @@ app.post('/api/settings/backup', (req, res) => {
   res.json({ ok: true, backup: path.basename(backup('manual')) });
 });
 
+// Tells the page which port the secure copy of itself is on, so the Share sheet
+// can point a phone at it. 0 when https is switched off.
+app.get('/api/https-port', (req, res) => res.json({ port: HTTPS_PORT }));
+
 /* ----------------------------------------------------------------- static */
 
 // Product photos are written once under a timestamped name and never changed,
@@ -533,6 +545,7 @@ both by itself. Then reload this page.</p>`
 
 app.listen(PORT, () => {
   console.log(`Order Bill Manager running on http://localhost:${PORT}`);
+  if (HTTPS_PORT) listenSecure(app, HTTPS_PORT);
   if (!BUILT) {
     console.log('');
     console.log('  WARNING: frontend/dist/index.html is missing, so only the API');

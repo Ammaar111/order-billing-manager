@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { cleanNumeric, rupees, shrinkImage } from '../utils.js';
+import { numeric } from '../keypad.js';
 
 const emptyForm = { product_id: '', name: '', cost: '', stock: '', contents: '' };
 
@@ -84,7 +85,7 @@ function ProductForm({ product, onClose, onSaved }) {
           }))
         }
         placeholder={extra.placeholder || ''}
-        inputMode={extra.numeric ? 'decimal' : undefined}
+        {...(extra.numeric ? numeric() : {})}
         ref={key === 'name' ? firstRef : undefined}
       />
     </label>

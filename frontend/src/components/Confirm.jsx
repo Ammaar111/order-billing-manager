@@ -5,25 +5,29 @@ import React, { useEffect, useRef } from 'react';
  * button holds focus from the moment it opens. Used by Ctrl+Enter, where the
  * biller's hands are already on the keys and reaching for a mouse to confirm a
  * print would undo the point of the shortcut.
+ *
+ * `safe` flips the default for a destructive yes (Discard): Enter, and a tap
+ * outside the box, then mean no, so a biller hammering Enter never loses work.
  */
-export default function Confirm({ title, message, yes = 'Yes', no = 'No', onYes, onNo }) {
+export default function Confirm({ title, message, yes = 'Yes', no = 'No', onYes, onNo, safe = false }) {
   const yesRef = useRef(null);
+  const noRef = useRef(null);
 
   useEffect(() => {
-    yesRef.current?.focus();
+    (safe ? noRef : yesRef).current?.focus();
     const onKey = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         onNo();
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        onYes();
+        (safe ? onNo : onYes)();
       }
     };
     // Capture, so the bill form underneath never sees these keys.
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onYes, onNo]);
+  }, [onYes, onNo, safe]);
 
   return (
     <>
@@ -34,11 +38,11 @@ export default function Confirm({ title, message, yes = 'Yes', no = 'No', onYes,
           {message && <p>{message}</p>}
         </div>
         <div className="sheet-foot">
-          <button type="button" className="ghost" onClick={onNo}>
-            {no} <kbd>Esc</kbd>
+          <button type="button" className={safe ? 'primary' : 'ghost'} ref={noRef} onClick={onNo}>
+            {no} <kbd>{safe ? 'Enter' : 'Esc'}</kbd>
           </button>
-          <button type="button" className="primary" ref={yesRef} onClick={onYes}>
-            {yes} <kbd>Enter</kbd>
+          <button type="button" className={safe ? 'destructive' : 'primary'} ref={yesRef} onClick={onYes}>
+            {yes} {!safe && <kbd>Enter</kbd>}
           </button>
         </div>
       </div>

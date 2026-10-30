@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import BillPrint from './BillPrint.jsx';
 import { billText, downloadFile, downloadWord, printBill } from '../print.js';
 import { billPdf } from '../pdf.js';
-import { money, rupees } from '../utils.js';
+import { api } from '../api.js';
+import { rupees } from '../utils.js';
 
 /**
  * What happens the moment a bill is saved: the shopkeeper is asked where it
@@ -31,9 +32,10 @@ export default function SaveSheet({
   const [pdf, setPdf] = useState(null);
   const [pdfFailed, setPdfFailed] = useState(false);
   const [hint, setHint] = useState('');
+  // Where the secure copy of this app lives, for a page that is not secure.
+  const [securePort, setSecurePort] = useState(0);
   const items = order.items || [];
   const text = billText(order, items, settings);
-  const cur = settings.currency || '₹';
 
   useEffect(() => {
     let alive = true;
@@ -50,8 +52,23 @@ export default function SaveSheet({
   // (https or localhost), so a phone opening the shop PC over plain wi-fi gets
   // `false` here and falls back to saving the file instead.
   const canShareFile = !!(pdf && navigator.canShare && navigator.canShare({ files: [pdf] }));
+  const insecure = !window.isSecureContext;
+  useEffect(() => {
+    if (!insecure) return;
+    api
+      .httpsPort()
+      .then((r) => setSecurePort(r?.port || 0))
+      .catch(() => {});
+  }, [insecure]);
+  const secureHref = securePort ? `https://${window.location.hostname}:${securePort}/` : '';
   // Print dialogs are a desktop idea; on a phone "Save as PDF" should just save.
   const touch = window.matchMedia?.('(pointer: coarse)').matches;
+
+  // The field the bill was finished from would otherwise keep the number pad
+  // up over this sheet, and its Enter would keep walking the bill behind it.
+  useEffect(() => {
+    document.activeElement?.blur?.();
+  }, []);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -85,10 +102,9 @@ export default function SaveSheet({
     }
   };
 
-  const share = async () => {
-    if (canShareFile && (await shareFile())) return;
-    setView('share');
-  };
+  // Always the menu first: WhatsApp gets the bill as text, and the PDF is one
+  // of the choices there rather than the thing Share does on its own.
+  const share = () => setView('share');
 
   const savePdf = () => {
     if (!pdf) return false;
@@ -96,17 +112,9 @@ export default function SaveSheet({
     return true;
   };
 
-  const sendWhatsApp = () => {
-    // wa.me cannot carry a file, so the PDF is saved first and the biller
-    // attaches it with the paperclip. The prefilled line says what it is.
-    const saved = savePdf();
-    setHint(
-      saved
-        ? 'PDF saved. In WhatsApp tap the paperclip, then Document, and choose it.'
-        : ''
-    );
-    window.open(waHref, '_blank', 'noopener');
-  };
+  // The shop wants the whole bill readable in the chat itself, every line and
+  // every total, as plain text — not a one-line total with a file to open.
+  const sendWhatsApp = () => window.open(waHref, '_blank', 'noopener');
 
   const copy = async () => {
     try {
@@ -120,15 +128,13 @@ export default function SaveSheet({
 
   const subject = `Order #${order.order_no} — ${settings.shop_name || 'Bill'}`;
   const su = encodeURIComponent(subject);
-  // The bill itself travels as the PDF; the message only says what it is.
-  const blurb = `${subject}\nTotal ${cur}${money(order.grand_total)}${
-    order.pending > 0 ? `, pending ${cur}${money(order.pending)}` : ''
-  }. Bill attached.`;
-  const body = encodeURIComponent(blurb);
-  // Mail keeps the full figures in the body: it is the one place a bill is read
-  // without opening an attachment.
-  const mailBody = encodeURIComponent(text);
-  const phone = (order.customer_phone || '').replace(/\D/g, '');
+  // WhatsApp and mail both carry the full bill as text.
+  const body = encodeURIComponent(text);
+  const mailBody = body;
+  // A bare 10-digit Indian mobile needs its country code for wa.me, or WhatsApp
+  // says the number is not on WhatsApp.
+  const digits = (order.customer_phone || '').replace(/\D/g, '');
+  const phone = digits.length === 10 ? `91${digits}` : digits.replace(/^0+/, '');
 
   // Without a number wa.me still opens WhatsApp on its own contact picker, so
   // the button is worth showing either way.
@@ -203,10 +209,10 @@ export default function SaveSheet({
               Word document
               <small>Opens in Word or Docs</small>
             </button>
-            <button type="button" onClick={share} disabled={!pdf && !pdfFailed}>
+            <button type="button" onClick={share}>
               Share
               <small>
-                {!pdf && !pdfFailed ? 'Preparing the PDF…' : 'The bill as a PDF — WhatsApp, mail, anywhere'}
+                WhatsApp as text, PDF, mail or copy
               </small>
             </button>
           </div>
@@ -214,22 +220,28 @@ export default function SaveSheet({
 
         {view === 'share' && (
           <div className="sheet-actions">
-            {canShareFile && (
-              <button type="button" className="primary" onClick={shareFile}>
-                Send the PDF
-                <small>Pick WhatsApp or any app</small>
-              </button>
-            )}
-            <button type="button" onClick={sendWhatsApp}>
+            <button type="button" className="primary" onClick={sendWhatsApp}>
               WhatsApp
               <small>
-                {phone ? `To ${order.customer_phone}` : 'Pick the contact in WhatsApp'} · you attach the PDF
+                {phone ? `To ${order.customer_phone}` : 'Pick the contact in WhatsApp'} · the full bill as text
               </small>
             </button>
             <button type="button" onClick={() => setView('email')}>
               Email
               <small>Gmail, Outlook, Yahoo or your mail app</small>
             </button>
+            {canShareFile && (
+              <button type="button" onClick={shareFile}>
+                Send the PDF
+                <small>Pick WhatsApp or any app, as a file</small>
+              </button>
+            )}
+            {insecure && secureHref && (
+              <a className="btn-like" href={secureHref}>
+                Want to send the PDF file instead?
+                <small>Open the secure address once, tap Advanced → Proceed</small>
+              </a>
+            )}
             <button type="button" onClick={() => setHint(savePdf() ? 'PDF saved.' : '')}>
               Download PDF
               <small>{pdf ? `${Math.max(1, Math.round(pdf.size / 1024))} KB` : 'Preparing…'}</small>

@@ -91,8 +91,10 @@ Inside a bill:
 From **Packing**, Enter goes to **Amount received** and then to **Save**, and
 Enter on Save saves the bill. That is the whole "this bill is finished" gesture.
 
-- **Discount** is a percentage and is optional. What it came to in rupees is
-  totalled at the foot of the bill.
+- **Discount** is a percentage and is optional. It is shown on the bill screen
+  but not printed or shared: the bill shows each line's total after discount.
+- **Cost** follows qty × rate. A cost typed by hand stays until qty or rate is
+  changed, then it is worked out again — on a new bill and a saved one alike.
 - **Customer name is optional.** Left blank, the bill is filed under **Cash**.
   Address and phone are optional too.
 - **Sr numbers** and the **order number** are given out automatically. Order
@@ -125,7 +127,8 @@ Press Save and the app asks where the bill should go:
 | **Save as PDF** | Opens the print window. Choose **Save as PDF** as the printer and pick a folder. |
 | **Print receipt** | The same bill on the thermal roll, at the width set in Settings. |
 | **Word document** | Downloads a `.doc` that opens in Word, LibreOffice or Google Docs. |
-| **Share** | Sends the bill as a **PDF file**. Where the browser can share files (a phone on https, or this computer's own `localhost`) the phone's share sheet opens with the PDF attached. Over plain `http://<pc-ip>:4100` browsers refuse file sharing, so WhatsApp / email save the PDF and open the app — attach it with the paperclip. |
+| **Share** | **WhatsApp** sends the whole bill — every line and every total — as plain text in the chat. A bare 10-digit number gets India's 91 in front. **Send the PDF** (only where the browser can share files: a phone on https, or this computer's own `localhost`) opens the share sheet with the PDF attached; over plain `http://<pc-ip>:4100` browsers refuse file sharing, and **Download PDF** saves it instead. The server therefore also listens on **https port 4443** (`https://<pc-ip>:4443`, certificate made automatically in `backend/certs/`; the phone warns once — tap Advanced → Proceed). Opened that way, Share attaches the PDF in one tap. `HTTPS_PORT=0` turns it off. |
+| **Number pad** | On a phone or tablet, number fields (quantity, rate, cost, discount, packing, balances, phone, stock) open the app's own pad with Enter and Tab instead of the phone's keyboard. On the phone, Enter on Amount received saves the bill. |
 
 Nothing is lost by closing that window — the order is already saved. It can be
 reopened from Orders at any time.

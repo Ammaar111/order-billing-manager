@@ -11,7 +11,7 @@ const nRoll = (v) => {
   return Number.isInteger(n) ? String(n) : n.toFixed(2);
 };
 
-// Below this the six columns genuinely cannot hold a product name: the numbers
+// Below this the five columns genuinely cannot hold a product name: the numbers
 // alone want more than a 58mm roll has, and something would wrap mid-figure.
 // Narrower paper falls back to a name on its own line.
 const TABLE_MIN_MM = 70;
@@ -26,15 +26,17 @@ const ROLL_SIDE_MM = 5;
  * The bill as it goes on paper. One component covers both A4 and the thermal
  * roll — same figures, different stylesheet — so a receipt can never disagree
  * with the PDF of the same order.
+ *
+ * Discounts are not printed — no Disc% column, no "Discount given" line. The
+ * shop asked for that; a line's Total is still the figure after its discount.
  */
 export default function BillPrint({ order, items, settings, mode = 'a4' }) {
   if (!order) return null;
   const cur = settings.currency || '₹';
   const withNames = order.bill_type !== 'qty-rate';
   const thermal = mode === 'thermal';
-  const hasDiscount = withNames && items.some((it) => money(it.discount) > 0);
   const rollMm = Number(settings.thermal_width) || 80;
-  // Only a narrow roll gives up the table; 80mm keeps all six columns.
+  // Only a narrow roll gives up the table; 80mm keeps all five columns.
   const stacked = thermal && withNames && rollMm < TABLE_MIN_MM;
   const fig = thermal ? nRoll : n2;
   // Columns in front of Qty; the Total qty label spans them.
@@ -79,7 +81,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
               <div className="bp-line-nums">
                 <span>
                   {it.qty} × {fig(it.rate)}
-                  {money(it.discount) > 0 ? ` less ${it.discount}%` : ''}
                 </span>
                 <span>{fig(it.line_total)}</span>
               </div>
@@ -94,7 +95,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
               {withNames && <th className="c-name">Product</th>}
               <th className="c-num c-qty">Qty</th>
               <th className="c-num c-rate">Rate</th>
-              {hasDiscount && <th className="c-num c-disc">{thermal ? '%' : 'Disc%'}</th>}
               <th className="c-num c-cost">Total</th>
             </tr>
           </thead>
@@ -109,9 +109,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
                 )}
                 <td className="c-num c-qty">{it.qty}</td>
                 <td className="c-num c-rate">{fig(it.rate)}</td>
-                {hasDiscount && (
-                  <td className="c-num c-disc">{it.discount ? it.discount : '—'}</td>
-                )}
                 <td className="c-num c-cost">{fig(it.line_total)}</td>
               </tr>
             ))}
@@ -123,7 +120,7 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
                 {withNames ? 'Total qty' : 'Total'}
               </td>
               <td className="c-num c-qty">{money(order.total_qty)}</td>
-              <td colSpan={hasDiscount ? 3 : 2} />
+              <td colSpan={2} />
             </tr>
           </tbody>
         </table>
@@ -145,15 +142,6 @@ export default function BillPrint({ order, items, settings, mode = 'a4' }) {
             {fig(order.items_total)}
           </span>
         </div>
-        {money(order.total_discount) > 0 && (
-          <div>
-            <span>Discount given</span>
-            <span>
-              − {cur}
-              {fig(order.total_discount)}
-            </span>
-          </div>
-        )}
         <div>
           <span>Packing</span>
           <span>

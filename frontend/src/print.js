@@ -83,14 +83,13 @@ function billHtml(order, items, settings) {
       ${withNames ? `<td>${esc(it.product_name)}</td>` : ''}
       <td align="right">${it.qty}</td>
       <td align="right">${n2(it.rate)}</td>
-      <td align="right">${it.discount || 0}</td>
       <td align="right">${n2(it.line_total)}</td>
     </tr>`
     )
     .join('');
 
   const line = (label, value, bold) =>
-    `<tr><td colspan="${withNames ? 4 : 3}"></td>
+    `<tr><td colspan="${withNames ? 3 : 2}"></td>
        <td align="right"${bold ? ' style="font-weight:bold"' : ''}>${esc(label)}</td>
        <td align="right"${bold ? ' style="font-weight:bold"' : ''}>${value}</td></tr>`;
 
@@ -117,13 +116,12 @@ function billHtml(order, items, settings) {
     <thead><tr>
       <th>Sr</th>${withNames ? '<th>Product</th>' : ''}
       <th align="right">Qty</th><th align="right">Rate</th>
-      <th align="right">Disc%</th><th align="right">Cost</th>
+      <th align="right">Cost</th>
     </tr></thead>
     <tbody>
       ${rows}
       ${line('Total qty', money(order.total_qty))}
       ${line('Bill total', cur + n2(order.items_total))}
-      ${money(order.total_discount) > 0 ? line('Discount given', '- ' + cur + n2(order.total_discount)) : ''}
       ${line('Packing', cur + n2(order.packing))}
       ${money(order.old_balance) !== 0 ? line('Old balance', cur + n2(order.old_balance)) : ''}
       ${money(order.round_off) !== 0 ? line('Round off', (money(order.round_off) > 0 ? '+ ' : '- ') + cur + n2(Math.abs(order.round_off))) : ''}
@@ -162,30 +160,38 @@ export function downloadHtml(order, items, settings) {
   );
 }
 
+// The whole bill as plain text — what goes into WhatsApp and the mail body.
+// Every line and every total, readable in the chat without opening anything.
+// Shop name and Grand total are wrapped in *…*, which WhatsApp shows as bold.
 export function billText(order, items, settings) {
   const cur = settings.currency || '₹';
   const withNames = order.bill_type !== 'qty-rate';
+  const rule = '------------------------------';
   const lines = [
-    `${settings.shop_name || 'Order Bill Manager'}`,
+    `*${settings.shop_name || 'Order Bill Manager'}*`,
+    settings.shop_address || '',
+    settings.shop_phone ? `Ph: ${settings.shop_phone}` : '',
+    rule,
     `Order #${order.order_no} · ${prettyDate(order.order_date)}`,
     `Name: ${order.customer_name}`,
+    order.customer_phone ? `Phone: ${order.customer_phone}` : '',
     order.address ? `Address: ${order.address}` : '',
-    '',
+    rule,
     ...items.map(
       (it) =>
-        `${it.sr_no}. ${withNames ? `${it.product_name} — ` : ''}${it.qty} x ${cur}${money(
+        `${it.sr_no}. ${withNames ? `${it.product_name}\n    ` : ''}${it.qty} x ${cur}${money(
           it.rate
         )} = ${cur}${money(it.line_total)}`
     ),
-    '',
+    rule,
     `Total qty: ${money(order.total_qty)}`,
-    money(order.total_discount) > 0 ? `Discount given: -${cur}${money(order.total_discount)}` : '',
+    `Bill total: ${cur}${money(order.items_total)}`,
     `Packing: ${cur}${money(order.packing)}`,
     money(order.old_balance) !== 0 ? `Old balance: ${cur}${money(order.old_balance)}` : '',
     money(order.round_off) !== 0
       ? `Round off: ${money(order.round_off) > 0 ? '+' : '-'}${cur}${money(Math.abs(order.round_off))}`
       : '',
-    `Grand total: ${cur}${money(order.grand_total)}`,
+    `*Grand total: ${cur}${money(order.grand_total)}*`,
     `Received: ${cur}${money(order.amount_paid)}`,
     order.pending < 0
       ? `Change due: ${cur}${money(-order.pending)}`

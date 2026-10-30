@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { MONTHS, prettyDate, rupees, todayStr } from '../utils.js';
+import { numeric } from '../keypad.js';
 
 /* ------------------------------------------------------ lifetime orders */
 
@@ -378,7 +379,7 @@ export default function Settings({ settings, onSettings, onOpenOrder }) {
               <span>Width in mm</span>
               <input
                 type="text"
-                inputMode="decimal"
+                {...numeric()}
                 value={form.thermal_width || ''}
                 onChange={(e) =>
                   setForm({ ...form, thermal_width: e.target.value.replace(/[^0-9.]/g, '') })

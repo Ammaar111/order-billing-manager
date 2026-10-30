@@ -22,6 +22,7 @@ const post = json('POST');
 const put = json('PUT');
 
 export const api = {
+  httpsPort: () => req('/api/https-port'),
   products: (q = '') => req(`/api/products${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   createProduct: (form) => req('/api/products', { method: 'POST', body: form }),
   updateProduct: (id, form) => req(`/api/products/${id}`, { method: 'PUT', body: form }),

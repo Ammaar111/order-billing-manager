@@ -5,6 +5,7 @@ import Products from './screens/Products.jsx';
 import Settings from './screens/Settings.jsx';
 import BillForm from './screens/BillForm.jsx';
 import Shortcuts from './components/Shortcuts.jsx';
+import Keypad from './components/Keypad.jsx';
 
 const TABS = [
   { key: 'orders', label: 'Orders', icon: '🧾' },
@@ -153,6 +154,7 @@ export default function App() {
       </main>
 
       {showKeys && <Shortcuts onClose={() => setShowKeys(false)} />}
+      <Keypad />
     </div>
   );
 }

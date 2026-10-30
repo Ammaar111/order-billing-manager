@@ -4,6 +4,7 @@ import ProductPicker from '../components/ProductPicker.jsx';
 import SaveSheet from '../components/SaveSheet.jsx';
 import Confirm from '../components/Confirm.jsx';
 import { cleanNumeric, money, num, rupees, todayStr } from '../utils.js';
+import { TOUCH, numeric } from '../keypad.js';
 
 // Every cell in a row, left to right. Arrow keys walk this.
 const COLUMNS = {
@@ -33,14 +34,14 @@ const blankRow = () => ({
   rate: '',
   cost: '',
   discount: '',
-  // Cost follows qty x rate until someone types over it, then it stays put —
-  // a shopkeeper rounding a line off should not have it recalculated away.
+  // A cost typed by hand stays put until qty or rate changes; then qty x rate
+  // takes over again, because a new quantity makes the old round-off wrong.
   costManual: false,
 });
 
 const numProps = (value, onValue, chainName) => ({
   type: 'text',
-  inputMode: 'decimal',
+  ...numeric(),
   // No type="number": the shop asked for no up/down arrows, and a number
   // input also changes value on a stray scroll over the cell.
   value,
@@ -129,6 +130,10 @@ const ItemRow = memo(function ItemRow({ r, i, billType, cur, setRow, removeRow }
 });
 
 export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
+  // The order this screen writes to. A new bill has none until its first save;
+  // from then on every save updates that order. Going by the `orderId` prop
+  // alone, "Keep editing" and Save again filed the same bill a second time.
+  const [savedId, setSavedId] = useState(orderId);
   const [orderNo, setOrderNo] = useState(null);
   const [billType, setBillType] = useState('full');
   const [customer, setCustomer] = useState({ name: '', address: '', phone: '' });
@@ -145,6 +150,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   const [completedAt, setCompletedAt] = useState('');
   const [justSaved, setJustSaved] = useState(true);
   const [askPrint, setAskPrint] = useState(false);
+  const [askDiscard, setAskDiscard] = useState(false);
   const [autoPrint, setAutoPrint] = useState(false);
   const [roundOff, setRoundOff] = useState(0);
   // Whether the biller has typed into Amount received themselves — including
@@ -191,7 +197,10 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             rate: it.rate ? String(it.rate) : '',
             cost: it.cost ? String(it.cost) : '',
             discount: it.discount ? String(it.discount) : '',
-            costManual: true,
+            // Only a line whose cost really differs from qty x rate was typed
+            // by hand. Marking every reopened line that way is what froze the
+            // cost of a saved bill when its qty or rate was corrected.
+            costManual: money(it.cost) !== money(num(it.qty) * num(it.rate)),
           }))
         );
       });
@@ -280,9 +289,15 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
         rs.map((r, j) => {
           if (j !== i) return r;
           const next = { ...r, ...patch };
-          if (!next.costManual && ('qty' in patch || 'rate' in patch)) {
+          if ('qty' in patch || 'rate' in patch) {
+            // Changing qty or rate always recalculates the line, on a new bill
+            // and on a saved one alike. The only cost left alone is one typed
+            // by hand on a line that has no rate to work it out from.
             const c = num(next.qty) * num(next.rate);
-            next.cost = c ? String(money(c)) : '';
+            if (c || !next.costManual) {
+              next.cost = c ? String(money(c)) : '';
+              next.costManual = false;
+            }
           }
           return next;
         })
@@ -407,6 +422,14 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
         (n) => !n.disabled && n.offsetParent !== null
       );
       const next = all[all.indexOf(el) + 1];
+      // On a phone the shop's number pad closes the moment Save takes focus,
+      // and there is no second Enter to press it with. So Enter on the last
+      // field saves outright — the same thing two Enters do on a keyboard.
+      if (next && next.tagName === 'BUTTON' && TOUCH) {
+        el.blur();
+        if (!saved && !saving) next.click();
+        return;
+      }
       if (next) {
         next.focus();
         if (next.select) next.select();
@@ -471,9 +494,10 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
       })),
     };
     try {
-      const out = orderId
-        ? await api.updateOrder(orderId, payload)
+      const out = savedId
+        ? await api.updateOrder(savedId, payload)
         : await api.createOrder(payload);
+      setSavedId(out.id);
       setOrderNo(out.order_no);
       setDirty(false);
       onDirtyChange?.(false);
@@ -497,8 +521,8 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   // Reopening a bill months later to print or send it again. Unsaved edits are
   // written first so what leaves the shop matches what is on the books.
   const printOrShare = async () => {
-    const wrote = dirty || !orderId;
-    const out = wrote ? await persist() : await api.order(orderId);
+    const wrote = dirty || !savedId;
+    const out = wrote ? await persist() : await api.order(savedId);
     if (out) {
       setJustSaved(wrote);
       setSaved(out);
@@ -506,7 +530,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
   };
 
   const toggleCompleted = async () => {
-    let id = orderId;
+    let id = savedId;
     if (!id || dirty) {
       const out = await persist();
       if (!out) return;
@@ -550,7 +574,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
         <div className="bill-title">
           <h2>
             Order <span className="order-no">#{orderNo ?? '—'}</span>
-            {!orderId && <span className="auto-tag">auto</span>}
+            {!savedId && <span className="auto-tag">auto</span>}
             {completedAt && <span className="done-tag">completed</span>}
           </h2>
           <input
@@ -623,7 +647,7 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             <input
               data-chain="customer-phone"
               type="text"
-              inputMode="tel"
+              {...numeric('tel')}
               autoComplete="off"
               value={customer.phone}
               onChange={(e) => {
@@ -787,9 +811,9 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
             onClick={save}
             disabled={saving}
           >
-            {saving ? 'Saving…' : orderId ? 'Save changes' : 'Save'}
+            {saving ? 'Saving…' : savedId ? 'Save changes' : 'Save'}
           </button>
-          {orderId && (
+          {savedId && (
             <button type="button" onClick={printOrShare} disabled={saving}>
               Print / share
             </button>
@@ -802,7 +826,13 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
           >
             {completedAt ? 'Reopen order' : '✓ Mark completed'}
           </button>
-          <button type="button" className="ghost" onClick={() => onDone(null)}>
+          {/* A whole bill is a lot to lose to one stray tap, so throwing away
+              unsaved work asks first. */}
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => (dirty ? setAskDiscard(true) : onDone(null))}
+          >
             {dirty ? 'Discard' : 'Back'}
           </button>
         </div>
@@ -823,6 +853,21 @@ export default function BillForm({ orderId, settings, onDone, onDirtyChange }) {
               setAutoPrint(true);
               setSaved(out);
             }
+          }}
+        />
+      )}
+
+      {askDiscard && (
+        <Confirm
+          title="Discard this bill?"
+          message="The changes since the last save will be lost."
+          yes="Discard"
+          no="Keep editing"
+          onNo={() => setAskDiscard(false)}
+          safe
+          onYes={() => {
+            setAskDiscard(false);
+            onDone(null);
           }}
         />
       )}
